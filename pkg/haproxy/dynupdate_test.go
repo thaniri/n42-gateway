@@ -29,13 +29,14 @@ import (
 
 func TestDynUpdate(t *testing.T) {
 	testCases := map[string]struct {
-		doconfig1 func(c *testConfig)
-		doconfig2 func(c *testConfig)
-		expected  []string
-		dynamic   bool
-		cmd       string
-		cmdOutput []string
-		logging   string
+		doconfig1   func(c *testConfig)
+		doconfig2   func(c *testConfig)
+		forceReload bool
+		expected    []string
+		dynamic     bool
+		cmd         string
+		cmdOutput   []string
+		logging     string
 	}{
 		"test01": {
 			dynamic: true,
@@ -1588,6 +1589,30 @@ INFO-V(2) empty response from server
 INFO-V(2) enabled endpoint '172.17.0.4:8080' weight '1' on backend/server 'default_app_8080/172.17.0.4:8080'
 `,
 		},
+		"force-reload-aligns-slots": {
+			doconfig1: func(c *testConfig) {
+				b := c.config.Backends().AcquireBackend("default", "app", "8080")
+				b.Dynamic.DynScaling = types.DynScalingSlots
+				b.Dynamic.MinFreeSlots = 1
+				b.AcquireEndpoint("172.17.0.2", 8080, "")
+				b.AddEmptyEndpoint(types.IPModeV4)
+			},
+			doconfig2: func(c *testConfig) {
+				b := c.config.Backends().AcquireBackend("default", "app", "8080")
+				b.Dynamic.DynScaling = types.DynScalingSlots
+				b.Dynamic.MinFreeSlots = 1
+				b.AcquireEndpoint("172.17.0.2", 8080, "")
+				b.AcquireEndpoint("172.17.0.3", 8080, "")
+			},
+			forceReload: true,
+			expected: []string{
+				"srv001:172.17.0.2:8080:1",
+				"srv002:172.17.0.3:8080:1",
+				"srv003:127.0.0.1:1023:1",
+			},
+			dynamic: false,
+			cmd:     ``,
+		},
 	}
 	readFile = func(_ string) ([]byte, error) {
 		return []byte("<content>"), nil
@@ -1618,7 +1643,7 @@ INFO-V(2) enabled endpoint '172.17.0.4:8080' weight '1' on backend/server 'defau
 			}
 			dynUpdater := c.instance.newDynUpdater()
 			dynUpdater.socket = clientMock
-			dynamic := dynUpdater.update()
+			dynamic := dynUpdater.update(test.forceReload)
 			var actual []string
 			for _, ep := range c.config.Backends().AcquireBackend("default", "app", "8080").Endpoints {
 				actual = append(actual, fmt.Sprintf("%s:%s:%d:%d", ep.Name, ep.IP, ep.Port, ep.Weight))

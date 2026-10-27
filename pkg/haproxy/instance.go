@@ -340,7 +340,9 @@ func (i *instance) HAProxyUpdate(timer *utils.Timer) error {
 		i.logChanged()
 	}
 	updater := i.newDynUpdater()
-	updated := updater.update()
+	// changes committed by a failed update might be missing in the running haproxy
+	forceReload := i.failedSince != nil
+	updated := updater.update(forceReload)
 	if i.options.SortEndpointsBy != "random" {
 		i.config.Backends().SortChangedEndpoints(i.options.SortEndpointsBy)
 	} else if !updated {

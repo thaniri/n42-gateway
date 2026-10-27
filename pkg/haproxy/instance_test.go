@@ -1926,6 +1926,23 @@ INFO (test) reload was skipped
 INFO haproxy successfully reloaded (external)`)
 }
 
+func TestReloadAfterFailedReload(t *testing.T) {
+	c := setup(t)
+	defer c.teardown()
+
+	c.httpFrontend(80).AcquireHost("d1.local").AddPath(c.config.Backends().AcquireBackend("d1", "app", "8080"), "/", hatypes.MatchBegin)
+	c.Update()
+	c.logger.CompareLogging(defaultLogging)
+
+	c.Update()
+	c.logger.CompareLogging(`
+INFO old and new configurations match`)
+
+	c.instance.updateSuccessful(false)
+	c.Update()
+	c.logger.CompareLogging(defaultLogging)
+}
+
 func TestPathIDsSplit(t *testing.T) {
 	c := setup(t)
 	defer c.teardown()
