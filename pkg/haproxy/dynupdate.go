@@ -64,8 +64,8 @@ func (i *instance) newDynUpdater() *dynUpdater {
 	}
 }
 
-func (d *dynUpdater) update(forceReload bool) bool {
-	updated := !forceReload && d.config.hasCommittedData() && d.checkConfigChange()
+func (d *dynUpdater) update() bool {
+	updated := d.config.hasCommittedData() && d.checkConfigChange()
 	if !updated {
 		// Need to reload, time to adjust empty slots according to config
 		d.alignSlots()

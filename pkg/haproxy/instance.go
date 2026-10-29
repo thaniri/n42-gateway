@@ -340,9 +340,7 @@ func (i *instance) HAProxyUpdate(timer *utils.Timer) error {
 		i.logChanged()
 	}
 	updater := i.newDynUpdater()
-	// changes committed by a failed update might be missing in the running haproxy
-	forceReload := i.failedSince != nil
-	updated := updater.update(forceReload)
+	updated := updater.update()
 	if i.options.SortEndpointsBy != "random" {
 		i.config.Backends().SortChangedEndpoints(i.options.SortEndpointsBy)
 	} else if !updated {
@@ -368,7 +366,9 @@ func (i *instance) HAProxyUpdate(timer *utils.Timer) error {
 			i.logger.Error("haproxy failed to reload, first occurrence at %s", i.failedSince.Format("2006-01-02 15:04:05.999999 -0700 MST"))
 		}
 	}()
-	if updated {
+	// changes committed by a failed update might be missing in the running haproxy
+	needReload := i.failedSince != nil
+	if !needReload && updated {
 		if updater.cmdCnt > 0 {
 			if i.options.ValidateConfig {
 				var err error
