@@ -43,29 +43,30 @@ import (
 
 // InstanceOptions ...
 type InstanceOptions struct {
-	AcmeSigner        acme.Signer
-	AcmeQueue         acme.Queue
-	RootFSPrefix      string
-	LocalFSPrefix     string
-	BackendShards     int
-	HAProxyCfgDir     string
-	HAProxyMapsDir    string
-	IPMode            hatypes.IPMode
-	IsMasterWorker    bool
-	IsExternal        bool
-	ConnectionTimeout time.Duration
-	GracePeriod       time.Duration
-	MasterSocket      string
-	AdminSocket       string
-	AcmeSocket        string
-	MaxOldConfigFiles int
-	Metrics           types.Metrics
-	ReloadQueue       *workqueue.WorkQueue[any]
-	ReloadStrategy    string
-	SortEndpointsBy   string
-	StopCtx           context.Context
-	TrackInstances    bool
-	ValidateConfig    bool
+	AcmeSigner          acme.Signer
+	AcmeQueue           acme.Queue
+	RootFSPrefix        string
+	LocalFSPrefix       string
+	BackendShards       int
+	CheckConfigSnippets bool
+	HAProxyCfgDir       string
+	HAProxyMapsDir      string
+	IPMode              hatypes.IPMode
+	IsMasterWorker      bool
+	IsExternal          bool
+	ConnectionTimeout   time.Duration
+	GracePeriod         time.Duration
+	MasterSocket        string
+	AdminSocket         string
+	AcmeSocket          string
+	MaxOldConfigFiles   int
+	Metrics             types.Metrics
+	ReloadQueue         *workqueue.WorkQueue[any]
+	ReloadStrategy      string
+	SortEndpointsBy     string
+	StopCtx             context.Context
+	TrackInstances      bool
+	ValidateConfig      bool
 	// TODO Fake is used to skip real haproxy calls. Use a mock instead.
 	fake bool
 }
@@ -84,7 +85,7 @@ type Instance interface {
 
 // CreateInstance ...
 func CreateInstance(logger types.Logger, options InstanceOptions) Instance {
-	return &instance{
+	i := &instance{
 		waitProc: make(chan struct{}),
 		logger:   logger,
 		options:  &options,
@@ -99,6 +100,8 @@ func CreateInstance(logger types.Logger, options InstanceOptions) Instance {
 		luaResponseTmpl: template.CreateConfig(),
 		luaPeersTmpl:    template.CreateConfig(),
 	}
+	i.checkFn = i.check
+	return i
 }
 
 type instance struct {
@@ -111,6 +114,7 @@ type instance struct {
 	config      *config
 	conns       *connections
 	metrics     types.Metrics
+	checkFn     func() error
 	//
 	haproxyTmpl     *template.Config
 	mapsTmpl        *template.Config
@@ -358,6 +362,15 @@ func (i *instance) HAProxyUpdate(timer *utils.Timer) error {
 		if err != nil {
 			i.metrics.IncUpdateNoop()
 			return fmt.Errorf("error writing configuration: %w", err)
+		}
+	}
+	if !updated && i.options.CheckConfigSnippets && i.hasChangedSnippets() {
+		err := i.checkConfigSnippets()
+		timer.Tick("check_snippets")
+		if err != nil {
+			i.updateSuccessful(false)
+			i.metrics.IncUpdateNoop()
+			return fmt.Errorf("error checking configuration snippets: %w", err)
 		}
 	}
 	i.updateCertExpiring()
