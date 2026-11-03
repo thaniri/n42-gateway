@@ -22,9 +22,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	hatypes "github.com/n42-gateway/n42-gateway/pkg/haproxy/types"
 	ingtypes "github.com/n42-gateway/n42-gateway/pkg/converters/ingress/types"
 	convtypes "github.com/n42-gateway/n42-gateway/pkg/converters/types"
+	hatypes "github.com/n42-gateway/n42-gateway/pkg/haproxy/types"
 )
 
 type ann struct {
