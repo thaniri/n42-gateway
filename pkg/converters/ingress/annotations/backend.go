@@ -591,6 +591,23 @@ func (c *updater) buildBackendCustomConfig(d *backData) {
 
 	d.backend.CustomConfigEarly = c.generateBackendSnippet(d, configBackendEarly)
 	d.backend.CustomConfigLate = c.generateBackendSnippet(d, configBackendLate)
+	var sources []string
+	if d.backend.CustomConfigEarly != nil {
+		sources = append(sources, snippetSource(configBackendEarly))
+	}
+	if d.backend.CustomConfigLate != nil {
+		if source := snippetSource(configBackendLate); len(sources) == 0 || sources[0] != source {
+			sources = append(sources, source)
+		}
+	}
+	d.backend.CustomConfigSource = strings.Join(sources, ", ")
+}
+
+func snippetSource(config *ConfigValue) string {
+	if config.Source == nil {
+		return "global config"
+	}
+	return config.Source.String()
 }
 
 func (c *updater) generateBackendSnippet(d *backData, config *ConfigValue) []string {
@@ -598,10 +615,7 @@ func (c *updater) generateBackendSnippet(d *backData, config *ConfigValue) []str
 	if len(lines) == 0 {
 		return nil
 	}
-	source := "global config"
-	if config.Source != nil {
-		source = config.Source.String()
-	}
+	source := snippetSource(config)
 	for _, line := range lines {
 		for _, token := range strings.Fields(line) {
 			if strings.Contains(path.Clean(token), "secrets/kubernetes.io/serviceaccount") {

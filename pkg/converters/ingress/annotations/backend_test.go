@@ -1660,6 +1660,42 @@ func TestSingleLineValueWithNewline(t *testing.T) {
 	}
 }
 
+func TestCustomConfigSource(t *testing.T) {
+	source := &Source{Type: types.ResourceIngress, Namespace: "default", Name: "app"}
+	testCases := map[string]struct {
+		ann      map[string]string
+		disabled []string
+		expected string
+		logging  string
+	}{
+		"no snippet": {},
+		"early and late snippet from the same ingress": {
+			ann: map[string]string{
+				ingtypes.BackConfigBackendEarly: "http-request deny if { path /internal }",
+				ingtypes.BackConfigBackendLate:  "http-response set-header x-id 1",
+			},
+			expected: "Ingress 'default/app'",
+		},
+		"snippet dropped by a disabled keyword": {
+			ann:      map[string]string{ingtypes.BackConfigBackend: "server srv001 127.0.0.1:8080"},
+			disabled: []string{"server"},
+			logging:  `WARN skipping configuration snippet on Ingress 'default/app': keyword 'server' not allowed`,
+		},
+	}
+	for name, test := range testCases {
+		t.Run(name, func(t *testing.T) {
+			c := setup(t)
+			d := c.createBackendData("default/app", source, test.ann, map[string]string{})
+			u := c.createUpdater()
+			u.options.DisableKeywords = test.disabled
+			u.buildBackendCustomConfig(d)
+			assert.Equal(t, test.expected, d.backend.CustomConfigSource)
+			c.logger.CompareLogging(test.logging)
+			c.teardown()
+		})
+	}
+}
+
 func TestDynamicScaling(t *testing.T) {
 	testCases := map[string]struct {
 		ann string

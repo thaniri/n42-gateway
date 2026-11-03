@@ -718,6 +718,7 @@ type Backend struct {
 	Cookie              Cookie
 	CustomConfigEarly   []string
 	CustomConfigLate    []string
+	CustomConfigSource  string
 	CustomHTTPResponses HTTPResponses
 	DeniedIPTCP         AccessConfig
 	Dynamic             DynBackendConfig
