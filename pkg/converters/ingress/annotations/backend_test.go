@@ -1616,6 +1616,50 @@ http-request deny if { src,lua.peers_sum(%[peers_group_backend],http_req_rate) g
 	}
 }
 
+func TestSingleLineValueWithNewline(t *testing.T) {
+	const injected = "/healthz\n    another-bogus-keyword"
+	testCases := map[string]struct {
+		ann   map[string]string
+		build func(u *updater, d *backData)
+		value func(b *hatypes.Backend) string
+	}{
+		ingtypes.BackHealthCheckURI: {
+			ann:   map[string]string{ingtypes.BackHealthCheckURI: injected},
+			build: (*updater).buildBackendHealthCheck,
+			value: func(b *hatypes.Backend) string { return b.HealthCheck.URI },
+		},
+		ingtypes.BackAgentCheckSend: {
+			ann:   map[string]string{ingtypes.BackAgentCheckSend: injected},
+			build: (*updater).buildBackendAgentCheck,
+			value: func(b *hatypes.Backend) string { return b.AgentCheck.Send },
+		},
+		ingtypes.BackSessionCookieKeywords: {
+			ann: map[string]string{
+				ingtypes.BackAffinity:              "cookie",
+				ingtypes.BackSessionCookieKeywords: injected,
+			},
+			build: (*updater).buildBackendAffinity,
+			value: func(b *hatypes.Backend) string { return b.Cookie.Keywords },
+		},
+	}
+	source := &Source{Type: types.ResourceIngress, Namespace: "default", Name: "app"}
+	for key, test := range testCases {
+		t.Run(key, func(t *testing.T) {
+			c := setup(t)
+			d := c.createBackendData("default/app", source, test.ann, map[string]string{})
+			test.build(c.createUpdater(), d)
+			assert.NotContains(t, test.value(d.backend), "\n", "a line break would inject a new haproxy config line")
+			if assert.Len(t, c.logger.Logging, 1) {
+				assert.Contains(t, c.logger.Logging[0], "WARN")
+				assert.Contains(t, c.logger.Logging[0], key)
+				assert.Contains(t, c.logger.Logging[0], "Ingress 'default/app'")
+			}
+			c.logger.Logging = nil
+			c.teardown()
+		})
+	}
+}
+
 func TestDynamicScaling(t *testing.T) {
 	testCases := map[string]struct {
 		ann string

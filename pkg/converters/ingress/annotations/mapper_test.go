@@ -20,7 +20,11 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	hatypes "github.com/n42-gateway/n42-gateway/pkg/haproxy/types"
+	ingtypes "github.com/n42-gateway/n42-gateway/pkg/converters/ingress/types"
+	convtypes "github.com/n42-gateway/n42-gateway/pkg/converters/types"
 )
 
 type ann struct {
@@ -294,5 +298,68 @@ func TestGetDefault(t *testing.T) {
 			}
 		}
 		c.teardown()
+	}
+}
+
+func TestAddAnnotationLineBreaks(t *testing.T) {
+	source := &Source{Type: convtypes.ResourceIngress, Namespace: "default", Name: "ing1"}
+	testCases := map[string]struct {
+		key      string
+		value    string
+		expValue string
+		logging  string
+	}{
+		"trailing line break from yaml block style": {
+			key:      ingtypes.BackHealthCheckURI,
+			value:    "/healthz\n",
+			expValue: "/healthz",
+		},
+		"spaces around a single line value": {
+			key:      ingtypes.BackHealthCheckURI,
+			value:    "  /healthz  ",
+			expValue: "/healthz",
+		},
+		"line break inside a single line value": {
+			key:     ingtypes.BackHealthCheckURI,
+			value:   "/healthz\n  bogus",
+			logging: `WARN ignoring 'health-check-uri' on Ingress 'default/ing1': line break not allowed in value "/healthz\n  bogus"`,
+		},
+		"carriage return inside a single line value": {
+			key:     ingtypes.BackSessionCookieKeywords,
+			value:   "nocache\rhttponly",
+			logging: `WARN ignoring 'session-cookie-keywords' on Ingress 'default/ing1': line break not allowed in value "nocache\rhttponly"`,
+		},
+		"snippet keeps its line breaks": {
+			key:      ingtypes.BackConfigBackend,
+			value:    "acl a path /\nhttp-request deny if a\n",
+			expValue: "acl a path /\nhttp-request deny if a\n",
+		},
+		"custom http response keeps its line breaks": {
+			key:      ingtypes.BackHTTPResponse503,
+			value:    "503\ncontent-type: text/plain\n\nunavailable",
+			expValue: "503\ncontent-type: text/plain\n\nunavailable",
+		},
+		"comma list split over lines": {
+			key:      ingtypes.BackAllowlistSourceRange,
+			value:    "10.0.0.0/8,\n192.168.0.0/16\n",
+			expValue: "10.0.0.0/8,\n192.168.0.0/16",
+		},
+		"line break inside a comma list item": {
+			key:     ingtypes.BackDenylistSourceRange,
+			value:   "10.0.0.0/8\n192.168.0.0/16",
+			logging: `WARN ignoring 'denylist-source-range' on Ingress 'default/ing1': line break not allowed in value "10.0.0.0/8\n192.168.0.0/16"`,
+		},
+	}
+	pathRoot := hatypes.CreatePathLink("/", hatypes.MatchBegin)
+	for name, test := range testCases {
+		t.Run(name, func(t *testing.T) {
+			c := setup(t)
+			mapper := NewMapBuilder(c.logger, map[string]string{}).NewMapper()
+			conflicts := mapper.AddAnnotations(source, pathRoot, map[string]string{test.key: test.value})
+			assert.Empty(t, conflicts)
+			assert.Equal(t, test.expValue, mapper.Get(test.key).Value)
+			c.logger.CompareLogging(test.logging)
+			c.teardown()
+		})
 	}
 }

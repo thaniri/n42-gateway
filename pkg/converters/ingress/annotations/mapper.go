@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 
+	ingtypes "github.com/n42-gateway/n42-gateway/pkg/converters/ingress/types"
 	convtypes "github.com/n42-gateway/n42-gateway/pkg/converters/types"
 	hatypes "github.com/n42-gateway/n42-gateway/pkg/haproxy/types"
 	"github.com/n42-gateway/n42-gateway/pkg/types"
@@ -68,6 +69,58 @@ type ConfigValue struct {
 	Value  string
 }
 
+// keys whose value the converter splits into lines
+var multiLineKeys = map[string]bool{
+	ingtypes.BackConfigBackend:         true,
+	ingtypes.BackConfigBackendEarly:    true,
+	ingtypes.BackConfigBackendLate:     true,
+	ingtypes.TCPConfigTCPService:       true,
+	ingtypes.BackHeaders:               true,
+	ingtypes.BackRequestAddHeaders:     true,
+	ingtypes.BackRequestSetHeaders:     true,
+	ingtypes.BackResponseAddHeaders:    true,
+	ingtypes.BackResponseSetHeaders:    true,
+	ingtypes.GlobalConfigDefaults:      true,
+	ingtypes.GlobalConfigFrontend:      true,
+	ingtypes.GlobalConfigFrontendEarly: true,
+	ingtypes.GlobalConfigFrontendLate:  true,
+	ingtypes.GlobalConfigGlobal:        true,
+	ingtypes.GlobalConfigPeers:         true,
+	ingtypes.GlobalConfigProxy:         true,
+	ingtypes.GlobalConfigSections:      true,
+	ingtypes.GlobalConfigTCP:           true,
+	ingtypes.GlobalDNSResolvers:        true,
+	ingtypes.GlobalHTTPFrontends:       true,
+}
+
+// keys whose value the converter splits at commas, trimming each item
+var commaListKeys = map[string]bool{
+	ingtypes.BackAllowlistSourceRange: true,
+	ingtypes.BackDenylistSourceRange:  true,
+	ingtypes.BackWhitelistSourceRange: true,
+	ingtypes.BackLimitWhitelist:       true,
+	ingtypes.BackRequestDelHeaders:    true,
+	ingtypes.BackResponseDelHeaders:   true,
+}
+
+// normalizeLineBreaks trims a one-line value, and returns false if a line break would add a haproxy config line.
+func normalizeLineBreaks(key, value string) (string, bool) {
+	if multiLineKeys[key] || strings.HasPrefix(key, "http-response-") {
+		return value, true
+	}
+	value = strings.TrimSpace(value)
+	items := []string{value}
+	if commaListKeys[key] {
+		items = strings.Split(value, ",")
+	}
+	for _, item := range items {
+		if strings.ContainsAny(strings.TrimSpace(item), "\r\n") {
+			return "", false
+		}
+	}
+	return value, true
+}
+
 // NewMapBuilder ...
 func NewMapBuilder(logger types.Logger, annDefaults map[string]string) *MapBuilder {
 	return &MapBuilder{
@@ -100,6 +153,12 @@ func (c *Mapper) addAnnotation(source *Source, path *hatypes.PathLink, key, valu
 		// empty means default value, cannot register as an annotation
 		panic("path link cannot be empty")
 	}
+	normValue, ok := normalizeLineBreaks(key, value)
+	if !ok {
+		c.logger.Warn("ignoring '%s' on %s: line break not allowed in value %q", key, source, value)
+		return false
+	}
+	value = normValue
 	// check overlap
 	config, configfound := c.configByPath[path.Hash()]
 	if !configfound {
