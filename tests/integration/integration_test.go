@@ -1279,6 +1279,103 @@ Request forbidden by administrative rules.
 		f.RequireIngressStatus(ctx, t, ing)
 	})
 
+	t.Run("should serve other ingresses when one ingress has an invalid configuration", func(t *testing.T) {
+		// t.Parallel() // non parallel, an invalid configuration that reaches haproxy makes every reload fail
+		testCases := map[string]struct {
+			key   string
+			value string
+		}{
+			"unknown keyword in snippet": {
+				key:   ingtypes.BackConfigBackend,
+				value: "another-bogus-keyword",
+			},
+			"known keyword with invalid arguments in snippet": {
+				key:   ingtypes.BackConfigBackend,
+				value: "http-request this-is-not-an-action",
+			},
+			"line break in a single line annotation": {
+				key:   ingtypes.BackHealthCheckURI,
+				value: "/healthz\n    another-bogus-keyword",
+			},
+		}
+		for name, test := range testCases {
+			t.Run(name, func(t *testing.T) {
+				// haproxy is running with a valid configuration
+				svcBefore := f.CreateService(ctx, t, httpServerPort)
+				_, hostnameBefore := f.CreateIngress(ctx, t, svcBefore)
+				f.Request(ctx, t, http.MethodGet, hostnameBefore, "/", options.ExpectResponseCode(http.StatusOK))
+
+				svcInvalid := f.CreateService(ctx, t, httpServerPort)
+				_, hostnameInvalid := f.CreateIngress(ctx, t, svcInvalid,
+					options.AddConfigKeyAnnotation(test.key, test.value),
+				)
+				svcAfter := f.CreateService(ctx, t, httpServerPort)
+				_, hostnameAfter := f.CreateIngress(ctx, t, svcAfter)
+
+				f.Request(ctx, t, http.MethodGet, hostnameAfter, "/", options.ExpectResponseCode(http.StatusOK))
+				// the invalid value is ignored, the remaining of the ingress is applied
+				f.Request(ctx, t, http.MethodGet, hostnameInvalid, "/", options.ExpectResponseCode(http.StatusOK))
+			})
+		}
+	})
+
+	t.Run("should keep a valid snippet that uses a template acl", func(t *testing.T) {
+		// t.Parallel() // non parallel, an invalid configuration that reaches haproxy makes every reload fail
+		svcInvalid := f.CreateService(ctx, t, httpServerPort)
+		_, _ = f.CreateIngress(ctx, t, svcInvalid,
+			options.AddConfigKeyAnnotation(ingtypes.BackConfigBackend, "another-bogus-keyword"),
+		)
+		svc := f.CreateService(ctx, t, httpServerPort)
+		_, hostname := f.CreateIngress(ctx, t, svc,
+			options.AddConfigKeyAnnotation(ingtypes.BackConfigBackend, "http-request deny deny_status 403 if !https-request"),
+		)
+		// the snippet is kept, so a plain http request is denied
+		f.Request(ctx, t, http.MethodGet, hostname, "/", options.ExpectResponseCode(http.StatusForbidden))
+	})
+
+	t.Run("should apply a snippet after the user fixes it", func(t *testing.T) {
+		// t.Parallel() // non parallel, an invalid configuration that reaches haproxy makes every reload fail
+		svc := f.CreateService(ctx, t, httpServerPort)
+		ing, hostname := f.CreateIngress(ctx, t, svc,
+			options.AddConfigKeyAnnotation(ingtypes.BackConfigBackend, "another-bogus-keyword"),
+		)
+		f.Request(ctx, t, http.MethodGet, hostname, "/", options.ExpectResponseCode(http.StatusOK))
+
+		err := f.Client().Get(ctx, client.ObjectKeyFromObject(ing), ing)
+		require.NoError(t, err)
+		ing.Annotations[framework.AnnotationPrefix+ingtypes.BackConfigBackend] = "http-request deny deny_status 403"
+		err = f.Client().Update(ctx, ing)
+		require.NoError(t, err)
+
+		f.Request(ctx, t, http.MethodGet, hostname, "/", options.ExpectResponseCode(http.StatusForbidden))
+	})
+
+	t.Run("should reconcile everything else when one snippet is dropped", func(t *testing.T) {
+		// t.Parallel() // non parallel, an invalid configuration that reaches haproxy makes every reload fail
+		svcBefore := f.CreateService(ctx, t, httpServerPort)
+		_, hostnameBefore := f.CreateIngress(ctx, t, svcBefore)
+		f.Request(ctx, t, http.MethodGet, hostnameBefore, "/", options.ExpectResponseCode(http.StatusOK))
+
+		svcInvalid := f.CreateService(ctx, t, httpServerPort)
+		ingInvalid, hostnameInvalid := f.CreateIngress(ctx, t, svcInvalid,
+			options.AddConfigKeyAnnotation(ingtypes.BackConfigBackend, "another-bogus-keyword"),
+			options.CustomObject(func(o client.Object) {
+				ing := o.(*networkingv1.Ingress)
+				rule := ing.Spec.Rules[0].DeepCopy()
+				rule.Host = "second-" + rule.Host
+				ing.Spec.Rules = append(ing.Spec.Rules, *rule)
+			}),
+		)
+		svcAfter := f.CreateService(ctx, t, httpServerPort)
+		ingAfter, hostnameAfter := f.CreateIngress(ctx, t, svcAfter)
+
+		f.Request(ctx, t, http.MethodGet, hostnameInvalid, "/", options.ExpectResponseCode(http.StatusOK))
+		f.Request(ctx, t, http.MethodGet, "second-"+hostnameInvalid, "/", options.ExpectResponseCode(http.StatusOK))
+		f.Request(ctx, t, http.MethodGet, hostnameAfter, "/", options.ExpectResponseCode(http.StatusOK))
+		f.RequireIngressStatus(ctx, t, ingInvalid)
+		f.RequireIngressStatus(ctx, t, ingAfter)
+	})
+
 	t.Run("should override old status", func(t *testing.T) {
 		t.Parallel()
 

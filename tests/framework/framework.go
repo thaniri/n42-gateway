@@ -244,6 +244,7 @@ func (f *framework) StartController(ctx context.Context, t *testing.T) {
 	opt.ConfigMap = GlobalConfigMap.String()
 	// Our Request() method and EndpointSlice configuration currently uses IPv4 address only
 	opt.IPMode = "v4"
+	opt.CheckConfigSnippets = true
 	if f.optOverride != nil {
 		f.optOverride(opt)
 	}
