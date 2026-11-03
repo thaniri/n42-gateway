@@ -334,6 +334,16 @@ func TestAddAnnotationLineBreaks(t *testing.T) {
 			value:    "acl a path /\nhttp-request deny if a\n",
 			expValue: "acl a path /\nhttp-request deny if a\n",
 		},
+		"http header match keeps its line breaks": {
+			key:      ingtypes.BackHTTPHeaderMatch,
+			value:    "x-a: 1\nx-b: 2\n",
+			expValue: "x-a: 1\nx-b: 2\n",
+		},
+		"http header match regex keeps its line breaks": {
+			key:      ingtypes.BackHTTPHeaderMatchRegex,
+			value:    "x-a: 1\nx-b: 2\n",
+			expValue: "x-a: 1\nx-b: 2\n",
+		},
 		"custom http response keeps its line breaks": {
 			key:      ingtypes.BackHTTPResponse503,
 			value:    "503\ncontent-type: text/plain\n\nunavailable",

@@ -76,6 +76,8 @@ var multiLineKeys = map[string]bool{
 	ingtypes.BackConfigBackendLate:     true,
 	ingtypes.TCPConfigTCPService:       true,
 	ingtypes.BackHeaders:               true,
+	ingtypes.BackHTTPHeaderMatch:       true,
+	ingtypes.BackHTTPHeaderMatchRegex:  true,
 	ingtypes.BackRequestAddHeaders:     true,
 	ingtypes.BackRequestSetHeaders:     true,
 	ingtypes.BackResponseAddHeaders:    true,
