@@ -24,15 +24,16 @@ import (
 )
 
 type metrics struct {
-	responseTime       *prometheus.HistogramVec
-	ctlProcTimeSum     *prometheus.CounterVec
-	ctlProcCount       *prometheus.CounterVec
-	procSecondsCounter *prometheus.CounterVec
-	updatesCounter     *prometheus.CounterVec
-	updateSuccessGauge *prometheus.GaugeVec
-	certExpireGauge    *prometheus.GaugeVec
-	certSigningCounter *prometheus.CounterVec
-	lastTrack          time.Time
+	responseTime            *prometheus.HistogramVec
+	ctlProcTimeSum          *prometheus.CounterVec
+	ctlProcCount            *prometheus.CounterVec
+	procSecondsCounter      *prometheus.CounterVec
+	updatesCounter          *prometheus.CounterVec
+	updateSuccessGauge      *prometheus.GaugeVec
+	snippetsRejectedCounter *prometheus.CounterVec
+	certExpireGauge         *prometheus.GaugeVec
+	certSigningCounter      *prometheus.CounterVec
+	lastTrack               time.Time
 }
 
 func (m *metrics) register(reg prometheus.Registerer) {
@@ -43,6 +44,7 @@ func (m *metrics) register(reg prometheus.Registerer) {
 		m.procSecondsCounter,
 		m.updatesCounter,
 		m.updateSuccessGauge,
+		m.snippetsRejectedCounter,
 		m.certExpireGauge,
 		m.certSigningCounter,
 	)
@@ -96,6 +98,14 @@ func createMetrics(namespace string, bucketsResponseTime []float64) *metrics {
 				Namespace: namespace,
 				Name:      "update_success",
 				Help:      "Whether the last haproxy update was successful.",
+			},
+			[]string{},
+		),
+		snippetsRejectedCounter: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: namespace,
+				Name:      "config_snippets_rejected_total",
+				Help:      "Cumulative number of configuration snippets dropped because haproxy rejected them.",
 			},
 			[]string{},
 		),
@@ -162,6 +172,10 @@ func (m *metrics) IncUpdateFull() {
 func (m *metrics) UpdateSuccessful(success bool) {
 	value := map[bool]float64{false: 0, true: 1}
 	m.updateSuccessGauge.WithLabelValues().Set(value[success])
+}
+
+func (m *metrics) IncConfigSnippetsRejected() {
+	m.snippetsRejectedCounter.WithLabelValues().Inc()
 }
 
 func (m *metrics) SetCertExpireDate(domain, cn string, notAfter *time.Time) {

@@ -31,6 +31,7 @@ type Metrics interface {
 	IncUpdateDynamic()
 	IncUpdateFull()
 	UpdateSuccessful(success bool)
+	IncConfigSnippetsRejected()
 	SetCertExpireDate(domain, cn string, notAfter *time.Time)
 	ClearCertExpire()
 	IncCertSigningMissing(domains string, success bool)

@@ -23,8 +23,9 @@ import (
 
 // MetricsMock ...
 type MetricsMock struct {
-	Logging []string
-	T       *testing.T
+	Logging                []string
+	T                      *testing.T
+	ConfigSnippetsRejected int
 }
 
 // NewMetricsMock ...
@@ -67,6 +68,11 @@ func (m *MetricsMock) IncUpdateFull() {
 
 // UpdateSuccessful ...
 func (m *MetricsMock) UpdateSuccessful(success bool) {
+}
+
+// IncConfigSnippetsRejected ...
+func (m *MetricsMock) IncConfigSnippetsRejected() {
+	m.ConfigSnippetsRejected++
 }
 
 // SetCertExpireDate ...
