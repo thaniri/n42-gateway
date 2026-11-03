@@ -23,6 +23,7 @@ The following command-line options are supported:
 | [`--apiserver-host`](#apiserver-host)                   | address of K8s API server  |                         |       |
 | [`--backend-shards`](#backend-shards)                   | int                        | `0`                     | v0.11 |
 | [`--buckets-response-time`](#buckets-response-time)     | float64 slice           | `.0005,.001,.002,.005,.01` | v0.10 |
+| [`--check-config-snippets`](#check-config-snippets)     | [true\|false]              | `false`                 | v0.17 |
 | [`--configmap`](#configmap)                             | namespace/configmapname    |                         |       |
 | [`--connection-timeout`](#timeout)                      | duration                   | `30s`                   | v0.14.11 |
 | [`--controller-class`](#ingress-class)                  | suffix                     | `""`                    | v0.12 |
@@ -179,6 +180,22 @@ services.
 * `--buckets-response-time`
 
 Configures the buckets of the histogram `n42gateway_haproxy_response_time_seconds`, used to compute the response time of the haproxy's admin socket. The response time unit is in seconds. The default value is `.0005,.001,.002,.005,.01` (`500µs`, `1ms`, `2ms`, `5ms`, `10ms`) if not configured.
+
+---
+
+### check-config-snippets
+
+* `--check-config-snippets`
+
+Since v0.17
+
+Defines if the controller checks the configuration with `haproxy -c` before it reloads HAProxy. The check runs only when a reload is needed and a changed backend has a configuration snippet, for example `config-backend`. If HAProxy rejects the configuration, the controller removes the snippets of the backends that the errors point to, logs a warning with the Ingress or Service that added the snippet, and checks again. The rest of the configuration is applied. The default value is `false`.
+
+The snippet stays removed until the Ingress or Service that added it changes. This option has no effect on an external HAProxy, see [`--master-socket`](#master-socket).
+
+See also:
+
+* [`--disable-config-keywords`](#disable-config-keywords) command-line option
 
 ---
 

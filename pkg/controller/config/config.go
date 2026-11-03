@@ -639,6 +639,7 @@ func CreateWithConfig(ctx context.Context, restConfig *rest.Config, opt *Options
 		UpdateStatusOnShutdown:   opt.UpdateStatusOnShutdown,
 		UseNodeInternalIP:        opt.UseNodeInternalIP,
 		ValidateConfig:           opt.ValidateConfig,
+		CheckConfigSnippets:      opt.CheckConfigSnippets,
 		VerifyHostname:           opt.VerifyHostname,
 		VersionInfo:              versionInfo,
 		WaitBeforeUpdate:         opt.WaitBeforeUpdate,
@@ -965,6 +966,7 @@ type Config struct {
 	UpdateStatusOnShutdown   bool
 	UseNodeInternalIP        bool
 	ValidateConfig           bool
+	CheckConfigSnippets      bool
 	VerifyHostname           bool
 	VersionInfo              version.Info
 	WaitBeforeUpdate         time.Duration

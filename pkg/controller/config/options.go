@@ -60,6 +60,7 @@ type Options struct {
 	ReloadStrategy           string
 	MaxOldConfigFiles        int
 	ValidateConfig           bool
+	CheckConfigSnippets      bool
 	ControllerClass          string
 	FullControllerName       string
 	WatchIngressWithoutClass bool
@@ -199,6 +200,13 @@ func (o *Options) AddFlags(fs *flag.FlagSet) {
 		"only happen when HAProxy needs to be reloaded. If validation fails, HAProxy "+
 		"Ingress will log the error and set the metric 'n42gateway_update_success' "+
 		"as failed (zero)",
+	)
+
+	fs.BoolVar(&o.CheckConfigSnippets, "check-config-snippets", o.CheckConfigSnippets, ""+
+		"Defines if the configuration is checked with 'haproxy -c' before a reload, when a "+
+		"changed backend has a configuration snippet. If haproxy rejects the configuration, "+
+		"the snippets it points to are dropped and a warning is logged, so the remaining "+
+		"configuration is applied. Has no effect on an external haproxy. Default value is false.",
 	)
 
 	fs.StringVar(&o.ControllerClass, "controller-class", o.ControllerClass, ""+
