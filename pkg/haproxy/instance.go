@@ -367,7 +367,8 @@ func (i *instance) HAProxyUpdate(timer *utils.Timer) error {
 			return fmt.Errorf("error writing configuration: %w", err)
 		}
 	}
-	if !updated && i.options.CheckConfigSnippets && i.hasChangedSnippets() {
+	// a failed check or reload left files on disk that haproxy may still reject
+	if !updated && i.options.CheckConfigSnippets && (i.failedSince != nil || i.hasChangedSnippets()) {
 		err := i.checkConfigSnippets()
 		timer.Tick("check_snippets")
 		if err != nil {

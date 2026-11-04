@@ -246,6 +246,58 @@ func TestCheckConfigSnippetsUnmappedError(t *testing.T) {
 	c.logger.CompareLogging("")
 }
 
+func TestCheckConfigSnippetsRunsAgainAfterFailure(t *testing.T) {
+	c := setup(t)
+	defer c.teardown()
+	var calls int
+	broken := true
+	c.instance.options.CheckConfigSnippets = true
+	c.instance.checkFn = func() error {
+		calls++
+		if broken {
+			return fmt.Errorf("[ALERT]    (1) : config : parsing [%s:2] : unknown keyword 'bogus' in 'global' section", filepath.Join(c.tempdir, "haproxy.cfg"))
+		}
+		return nil
+	}
+	addBackend := func(name string) {
+		b := c.config.Backends().AcquireBackend("d1", name, "8080")
+		c.httpFrontend(80).AcquireHost(name+".local").AddPath(b, "/", hatypes.MatchBegin)
+	}
+	addedLogging := func(name string) string {
+		return `
+INFO-V(2) added host '` + name + `.local'
+INFO-V(2) added backend 'd1_` + name + `_8080'
+INFO-V(2) need to reload due to config changes: [hosts (_front_http) backends]`
+	}
+
+	c.addSnippetBackend("app1", "http-response set-header X-Valid 1")
+	require.ErrorContains(t, c.instance.HAProxyUpdate(utils.NewTimer(nil)), "error checking configuration snippets")
+	require.Equal(t, 1, calls)
+
+	// a new backend without snippet needs a reload, the files on disk still fail the check
+	addBackend("app2")
+	err := c.instance.HAProxyUpdate(utils.NewTimer(nil))
+
+	require.ErrorContains(t, err, "error checking configuration snippets")
+	assert.Equal(t, 2, calls)
+	c.logger.CompareLogging(addedLogging("app2"))
+
+	// the problem is fixed, the next pass reloads
+	broken = false
+	addBackend("app3")
+	c.Update()
+
+	assert.Equal(t, 3, calls)
+	c.logger.CompareLogging(addedLogging("app3") + defaultLogging)
+
+	// the check is not needed anymore after a successful reload
+	addBackend("app4")
+	c.Update()
+
+	assert.Equal(t, 3, calls)
+	c.logger.CompareLogging(addedLogging("app4") + defaultLogging)
+}
+
 func TestCheckConfigSnippetsStopsAfterMaxRounds(t *testing.T) {
 	c := setup(t)
 	defer c.teardown()
