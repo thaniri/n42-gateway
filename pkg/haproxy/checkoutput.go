@@ -25,6 +25,7 @@ import (
 // checkAlert is an error of `haproxy -c` that points to a backend.
 type checkAlert struct {
 	backendID string
+	line      string // trimmed text of the rejected line, empty if the error names the proxy
 	message   string
 }
 
@@ -33,10 +34,10 @@ var (
 	checkProxyRegex   = regexp.MustCompile(`(?i)\b(?:backend|proxy) '([^']+)'`)
 )
 
-// parseCheckOutput returns one alert per backend that the errors of `haproxy -c` point to.
+// parseCheckOutput returns one alert per backend and rejected line that the errors of `haproxy -c` point to.
 func parseCheckOutput(output string, readFile func(name string) ([]byte, error)) []checkAlert {
 	var alerts []checkAlert
-	seen := map[string]bool{}
+	seen := map[checkAlert]bool{}
 	files := map[string][]string{}
 	for _, line := range strings.Split(output, "\n") {
 		line = strings.TrimSpace(line)
@@ -44,7 +45,7 @@ func parseCheckOutput(output string, readFile func(name string) ([]byte, error))
 		if !strings.HasPrefix(line, "[ALERT]") || !strings.Contains(line, ": config :") {
 			continue
 		}
-		var backendID string
+		var key checkAlert
 		if match := checkParsingRegex.FindStringSubmatch(line); match != nil {
 			lines, found := files[match[1]]
 			if !found {
@@ -54,13 +55,19 @@ func parseCheckOutput(output string, readFile func(name string) ([]byte, error))
 				files[match[1]] = lines
 			}
 			lineNumber, _ := strconv.Atoi(match[2])
-			backendID = backendAtLine(lines, lineNumber)
+			if lineNumber <= len(lines) {
+				key.backendID = backendAtLine(lines, lineNumber)
+			}
+			if key.backendID != "" {
+				key.line = strings.TrimSpace(lines[lineNumber-1])
+			}
 		} else if match := checkProxyRegex.FindStringSubmatch(line); match != nil {
-			backendID = match[1]
+			key.backendID = match[1]
 		}
-		if backendID != "" && !seen[backendID] {
-			seen[backendID] = true
-			alerts = append(alerts, checkAlert{backendID: backendID, message: line})
+		if key.backendID != "" && !seen[key] {
+			seen[key] = true
+			key.message = line
+			alerts = append(alerts, key)
 		}
 	}
 	return alerts

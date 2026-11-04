@@ -52,6 +52,7 @@ func TestParseCheckOutput(t *testing.T) {
 		return nil, fmt.Errorf("file not found: %s", name)
 	}
 	const unknownKeyword = "[ALERT]    (35) : config : parsing [/etc/haproxy/haproxy.cfg:5] : unknown keyword 'another-bogus-keyword' in 'backend' section"
+	const alsoBogus = "[ALERT]    (35) : config : parsing [/etc/haproxy/haproxy.cfg:6] : 'http-request' expects 'deny', but got 'also-bogus'."
 	testCases := map[string]struct {
 		output   string
 		expected []checkAlert
@@ -60,12 +61,13 @@ func TestParseCheckOutput(t *testing.T) {
 			output: unknownKeyword + `
 [ALERT]    (35) : config : Error(s) found in configuration file : /etc/haproxy/haproxy.cfg
 [ALERT]    (35) : config : Fatal errors found in configuration.`,
-			expected: []checkAlert{{backendID: "d1_app1_8080", message: unknownKeyword}},
+			expected: []checkAlert{{backendID: "d1_app1_8080", line: "another-bogus-keyword", message: unknownKeyword}},
 		},
 		"invalid arguments in a shard file": {
 			output: "[ALERT]    (35) : config : parsing [/etc/haproxy/haproxy5-backend003.cfg:3]: 'http-request' expects 'deny', but got 'this-is-not-an-action'.",
 			expected: []checkAlert{{
 				backendID: "d1_app2_8080",
+				line:      "http-request this-is-not-an-action",
 				message:   "[ALERT]    (35) : config : parsing [/etc/haproxy/haproxy5-backend003.cfg:3]: 'http-request' expects 'deny', but got 'this-is-not-an-action'.",
 			}},
 		},
@@ -83,9 +85,15 @@ func TestParseCheckOutput(t *testing.T) {
 			output: "[ALERT]    (55) : backend 'd1_app1_8080' has no server available!",
 		},
 		"two errors in the same backend": {
-			output: unknownKeyword + "\n" +
-				"[ALERT]    (35) : config : parsing [/etc/haproxy/haproxy.cfg:6] : 'http-request' expects 'deny', but got 'also-bogus'.",
-			expected: []checkAlert{{backendID: "d1_app1_8080", message: unknownKeyword}},
+			output: unknownKeyword + "\n" + alsoBogus,
+			expected: []checkAlert{
+				{backendID: "d1_app1_8080", line: "another-bogus-keyword", message: unknownKeyword},
+				{backendID: "d1_app1_8080", line: "http-request also-bogus", message: alsoBogus},
+			},
+		},
+		"the same line reported twice": {
+			output:   unknownKeyword + "\n" + unknownKeyword,
+			expected: []checkAlert{{backendID: "d1_app1_8080", line: "another-bogus-keyword", message: unknownKeyword}},
 		},
 		"file cannot be read": {
 			output: "[ALERT]    (35) : config : parsing [/etc/haproxy/missing.cfg:3] : unknown keyword 'bogus' in 'backend' section",

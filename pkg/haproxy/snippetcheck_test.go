@@ -298,6 +298,50 @@ INFO-V(2) need to reload due to config changes: [hosts (_front_http) backends]`
 	c.logger.CompareLogging(addedLogging("app4") + defaultLogging)
 }
 
+func TestCheckConfigSnippetsKeptOnNonSnippetLineError(t *testing.T) {
+	c := setup(t)
+	defer c.teardown()
+	const snippet = "http-response set-header X-Valid 1"
+	var calls int
+	var rejected string
+	c.instance.options.CheckConfigSnippets = true
+	// rejects the first line of backend d1_app1_8080 that is not the snippet
+	c.instance.checkFn = func() error {
+		calls++
+		cfgFile := filepath.Join(c.tempdir, "haproxy.cfg")
+		content, err := os.ReadFile(cfgFile)
+		if err != nil {
+			return err
+		}
+		inBackend := false
+		for n, line := range strings.Split(string(content), "\n") {
+			if inBackend && strings.TrimSpace(line) != "" && strings.TrimSpace(line) != snippet {
+				rejected = strings.TrimSpace(line)
+				return fmt.Errorf("[ALERT]    (1) : config : parsing [%s:%d] : unknown keyword in 'backend' section", cfgFile, n+1)
+			}
+			inBackend = inBackend || line == "backend d1_app1_8080"
+		}
+		return nil
+	}
+	metrics := c.instance.metrics.(*helper_test.MetricsMock)
+
+	valid := c.addSnippetBackend("app1", snippet)
+	err := c.instance.HAProxyUpdate(utils.NewTimer(nil))
+
+	require.ErrorContains(t, err, "configuration is invalid and no snippet can be dropped")
+	require.NotEmpty(t, rejected)
+	assert.Equal(t, 1, calls)
+	assert.Equal(t, []string{snippet}, valid.CustomConfigLate)
+	assert.Contains(t, c.readConfig(filepath.Join(c.tempdir, "haproxy.cfg")), snippet)
+	assert.Equal(t, 0, metrics.ConfigSnippetsRejected)
+	c.logger.CompareLogging("")
+
+	// nothing was remembered, a rebuild keeps the snippet
+	rebuilt := &hatypes.Backend{CustomConfigLate: []string{snippet}}
+	assert.False(t, rebuilt.KeepConfigSnippetDropped(valid))
+	assert.Equal(t, []string{snippet}, rebuilt.CustomConfigLate)
+}
+
 func TestCheckConfigSnippetsStopsAfterMaxRounds(t *testing.T) {
 	c := setup(t)
 	defer c.teardown()

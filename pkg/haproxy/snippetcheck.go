@@ -19,6 +19,7 @@ package haproxy
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	hatypes "github.com/n42-gateway/n42-gateway/pkg/haproxy/types"
 )
@@ -27,6 +28,18 @@ const maxSnippetCheckRounds = 3
 
 func hasSnippet(backend *hatypes.Backend) bool {
 	return len(backend.CustomConfigEarly) > 0 || len(backend.CustomConfigLate) > 0
+}
+
+// snippetHasLine returns true if the trimmed line is one of the snippet lines of the backend.
+func snippetHasLine(backend *hatypes.Backend, line string) bool {
+	for _, snippet := range [][]string{backend.CustomConfigEarly, backend.CustomConfigLate} {
+		for _, snippetLine := range snippet {
+			if strings.TrimSpace(snippetLine) == line {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (i *instance) hasChangedSnippets() bool {
@@ -62,6 +75,10 @@ func (i *instance) checkConfigSnippets() error {
 		for _, alert := range parseCheckOutput(err.Error(), os.ReadFile) {
 			backend := i.config.Backends().Items()[alert.backendID]
 			if backend == nil || !hasSnippet(backend) {
+				continue
+			}
+			// alerts that name only the proxy have no line, and blame the whole backend
+			if alert.line != "" && !snippetHasLine(backend, alert.line) {
 				continue
 			}
 			backend.DropConfigSnippet()
