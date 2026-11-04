@@ -191,7 +191,7 @@ Since v0.17
 
 Defines if the controller checks the configuration with `haproxy -c` before it reloads HAProxy. The check runs only when a reload is needed and a changed backend has a configuration snippet, for example `config-backend`. If HAProxy rejects the configuration, the controller removes the snippets of the backends that the errors point to, logs a warning with the Ingress or Service that added the snippet, and checks again. The rest of the configuration is applied. The default value is `false`.
 
-The snippet stays removed until the Ingress or Service that added it changes. This option has no effect on an external HAProxy, see [`--master-socket`](#master-socket).
+The snippet stays removed until its text changes, a full sync runs (for example after a ConfigMap change or a leader change), or the controller restarts. This option has no effect on an external HAProxy, see [`--master-socket`](#master-socket).
 
 See also:
 
