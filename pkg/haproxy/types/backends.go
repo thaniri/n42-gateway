@@ -71,6 +71,11 @@ func (b *Backends) Clear() {
 			b.backendShardChanged(i)
 		}
 	}
+	// a full sync checks dropped config snippets again
+	for _, back := range b.items {
+		back.droppedConfigEarly = nil
+		back.droppedConfigLate = nil
+	}
 	nb.itemsDel = b.items
 	*b = *nb
 }

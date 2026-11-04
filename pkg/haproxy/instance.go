@@ -321,6 +321,9 @@ func (i *instance) HAProxyUpdate(timer *utils.Timer) error {
 	//
 	defer i.config.Commit()
 	i.config.SyncConfig()
+	if i.options.CheckConfigSnippets {
+		i.keepDroppedSnippetsOut()
+	}
 	i.config.Shrink()
 	if err := i.config.WriteTCPServicesMaps(); err != nil {
 		i.metrics.IncUpdateNoop()

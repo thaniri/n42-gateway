@@ -719,6 +719,8 @@ type Backend struct {
 	CustomConfigEarly   []string
 	CustomConfigLate    []string
 	CustomConfigSource  string
+	droppedConfigEarly  []string
+	droppedConfigLate   []string
 	CustomHTTPResponses HTTPResponses
 	DeniedIPTCP         AccessConfig
 	Dynamic             DynBackendConfig

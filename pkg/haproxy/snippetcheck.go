@@ -38,6 +38,16 @@ func (i *instance) hasChangedSnippets() bool {
 	return false
 }
 
+// keepDroppedSnippetsOut clears again the snippets of rebuilt backends that a previous pass dropped, before Shrink compares them.
+func (i *instance) keepDroppedSnippetsOut() {
+	backends := i.config.Backends()
+	for id, add := range backends.ItemsAdd() {
+		if del := backends.ItemsDel()[id]; del != nil && add.KeepConfigSnippetDropped(del) {
+			i.logger.InfoV(2, "keeping rejected configuration snippet out on %s", add.CustomConfigSource)
+		}
+	}
+}
+
 // checkConfigSnippets drops the backend snippets that `haproxy -c` rejects, and writes the configuration again.
 func (i *instance) checkConfigSnippets() error {
 	for round := 0; ; round++ {
@@ -54,8 +64,7 @@ func (i *instance) checkConfigSnippets() error {
 			if backend == nil || !hasSnippet(backend) {
 				continue
 			}
-			backend.CustomConfigEarly = nil
-			backend.CustomConfigLate = nil
+			backend.DropConfigSnippet()
 			// an unchanged backend's shard file would not be written again otherwise
 			i.config.Backends().BackendChanged(backend)
 			i.logger.Warn("skipping configuration snippet on %s: haproxy rejected it: %s", backend.CustomConfigSource, alert.message)

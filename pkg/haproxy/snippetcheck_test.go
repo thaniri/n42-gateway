@@ -85,6 +85,82 @@ func TestCheckConfigSnippetsDropsRejected(t *testing.T) {
 	c.logger.CompareLogging(defaultLogging)
 }
 
+func TestCheckConfigSnippetsDroppedStaysOutOnRebuild(t *testing.T) {
+	c := setup(t)
+	defer c.teardown()
+	var calls int
+	c.instance.options.CheckConfigSnippets = true
+	c.instance.checkFn = fakeHAProxyCheck(c, &calls)
+	metrics := c.instance.metrics.(*helper_test.MetricsMock)
+
+	c.addSnippetBackend("app1", bogusKeyword)
+	c.Update()
+	require.Equal(t, 2, calls)
+	c.logger.Logging = nil
+
+	// a partial sync rebuilds the backend of an unchanged Ingress, e.g. every Ingress of the same IngressClass
+	c.httpFrontend(80).RemoveAllHosts([]string{"app1.local"})
+	c.config.Backends().RemoveAll([]string{"d1_app1_8080"})
+	c.addSnippetBackend("app1", bogusKeyword)
+	c.Update()
+
+	assert.Equal(t, 2, calls)
+	assert.Equal(t, 1, metrics.ConfigSnippetsRejected)
+	c.logger.CompareLogging(`
+INFO-V(2) keeping rejected configuration snippet out on Ingress 'd1/app1'
+INFO old and new configurations match`)
+}
+
+func TestCheckConfigSnippetsDroppedCheckedAgainOnChange(t *testing.T) {
+	c := setup(t)
+	defer c.teardown()
+	var calls int
+	c.instance.options.CheckConfigSnippets = true
+	c.instance.checkFn = fakeHAProxyCheck(c, &calls)
+	metrics := c.instance.metrics.(*helper_test.MetricsMock)
+
+	c.addSnippetBackend("app1", bogusKeyword)
+	c.Update()
+	require.Equal(t, 2, calls)
+	c.logger.Logging = nil
+
+	c.httpFrontend(80).RemoveAllHosts([]string{"app1.local"})
+	c.config.Backends().RemoveAll([]string{"d1_app1_8080"})
+	changed := c.addSnippetBackend("app1", "http-response set-header X-Valid 1")
+	c.Update()
+
+	assert.Equal(t, 3, calls)
+	assert.Equal(t, 1, metrics.ConfigSnippetsRejected)
+	assert.Equal(t, []string{"http-response set-header X-Valid 1"}, changed.CustomConfigLate)
+	assert.Contains(t, c.readConfig(filepath.Join(c.tempdir, "haproxy.cfg")), "http-response set-header X-Valid 1")
+	c.logger.CompareLogging(`
+INFO-V(2) diff outside endpoints of backend 'd1_app1_8080'
+INFO-V(2) need to reload due to config changes: [backends]` + defaultLogging)
+}
+
+func TestCheckConfigSnippetsDroppedCheckedAgainOnFullSync(t *testing.T) {
+	c := setup(t)
+	defer c.teardown()
+	var calls int
+	c.instance.options.CheckConfigSnippets = true
+	c.instance.checkFn = fakeHAProxyCheck(c, &calls)
+	metrics := c.instance.metrics.(*helper_test.MetricsMock)
+
+	c.addSnippetBackend("app1", bogusKeyword)
+	c.Update()
+	require.Equal(t, 2, calls)
+	c.logger.Logging = nil
+
+	c.config.Clear()
+	c.addSnippetBackend("app1", bogusKeyword)
+	c.Update()
+
+	assert.Equal(t, 4, calls)
+	assert.Equal(t, 2, metrics.ConfigSnippetsRejected)
+	assert.NotContains(t, c.readConfig(filepath.Join(c.tempdir, "haproxy.cfg")), bogusKeyword)
+	c.logger.Logging = nil
+}
+
 func TestCheckConfigSnippetsSkippedWithoutSnippet(t *testing.T) {
 	c := setup(t)
 	defer c.teardown()
@@ -113,6 +189,40 @@ func TestCheckConfigSnippetsDisabled(t *testing.T) {
 	assert.Equal(t, []string{bogusKeyword}, invalid.CustomConfigLate)
 	assert.Contains(t, c.readConfig(filepath.Join(c.tempdir, "haproxy.cfg")), bogusKeyword)
 	c.logger.CompareLogging(defaultLogging)
+
+	// a later rebuild with the option off does not clear anything either
+	c.httpFrontend(80).RemoveAllHosts([]string{"app1.local"})
+	c.config.Backends().RemoveAll([]string{"d1_app1_8080"})
+	c.addSnippetBackend("app1", bogusKeyword)
+	c.Update()
+
+	assert.Equal(t, 0, calls)
+	assert.Equal(t, []string{bogusKeyword}, c.config.Backends().Items()["d1_app1_8080"].CustomConfigLate)
+	c.logger.CompareLogging("INFO old and new configurations match")
+}
+
+func TestCheckConfigSnippetsDisabledDoesNotKeepDroppedOut(t *testing.T) {
+	c := setup(t)
+	defer c.teardown()
+	var calls int
+	c.instance.options.CheckConfigSnippets = true
+	c.instance.checkFn = fakeHAProxyCheck(c, &calls)
+
+	c.addSnippetBackend("app1", bogusKeyword)
+	c.Update()
+	require.Equal(t, 2, calls)
+	c.instance.options.CheckConfigSnippets = false
+	c.logger.Logging = nil
+
+	c.httpFrontend(80).RemoveAllHosts([]string{"app1.local"})
+	c.config.Backends().RemoveAll([]string{"d1_app1_8080"})
+	rebuilt := c.addSnippetBackend("app1", bogusKeyword)
+	c.Update()
+
+	assert.Equal(t, 2, calls)
+	assert.Equal(t, []string{bogusKeyword}, rebuilt.CustomConfigLate)
+	assert.Contains(t, c.readConfig(filepath.Join(c.tempdir, "haproxy.cfg")), bogusKeyword)
+	c.logger.Logging = nil
 }
 
 func TestCheckConfigSnippetsUnmappedError(t *testing.T) {

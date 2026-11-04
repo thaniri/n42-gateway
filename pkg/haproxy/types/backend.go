@@ -197,6 +197,29 @@ func (b *Backend) Equals(other *Backend) bool {
 	return utils.StructEquals(b, other, "Paths", "Dynamic")
 }
 
+// DropConfigSnippet clears the config snippets and remembers them, see KeepConfigSnippetDropped.
+func (b *Backend) DropConfigSnippet() {
+	b.droppedConfigEarly = b.CustomConfigEarly
+	b.droppedConfigLate = b.CustomConfigLate
+	b.CustomConfigEarly = nil
+	b.CustomConfigLate = nil
+}
+
+// KeepConfigSnippetDropped clears the config snippets if old dropped the same ones, and returns true if it did.
+func (b *Backend) KeepConfigSnippetDropped(old *Backend) bool {
+	if len(old.droppedConfigEarly) == 0 && len(old.droppedConfigLate) == 0 {
+		return false
+	}
+	if !slices.Equal(b.CustomConfigEarly, old.droppedConfigEarly) || !slices.Equal(b.CustomConfigLate, old.droppedConfigLate) {
+		return false
+	}
+	b.droppedConfigEarly = old.droppedConfigEarly
+	b.droppedConfigLate = old.droppedConfigLate
+	b.CustomConfigEarly = nil
+	b.CustomConfigLate = nil
+	return true
+}
+
 // HasCorsEnabled ...
 func (b *Backend) HasCorsEnabled() bool {
 	for _, path := range b.Paths {
