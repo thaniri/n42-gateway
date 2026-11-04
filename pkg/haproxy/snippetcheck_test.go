@@ -342,6 +342,52 @@ func TestCheckConfigSnippetsKeptOnNonSnippetLineError(t *testing.T) {
 	assert.Equal(t, []string{snippet}, rebuilt.CustomConfigLate)
 }
 
+func TestCheckConfigSnippetsDropsSeveralInOneRound(t *testing.T) {
+	c := setup(t)
+	defer c.teardown()
+	var calls int
+	c.instance.options.CheckConfigSnippets = true
+	// like `haproxy -c`, reports every rejected line in one run
+	c.instance.checkFn = func() error {
+		calls++
+		cfgFile := filepath.Join(c.tempdir, "haproxy.cfg")
+		content, err := os.ReadFile(cfgFile)
+		if err != nil {
+			return err
+		}
+		var alerts []string
+		for n, line := range strings.Split(string(content), "\n") {
+			if strings.Contains(line, bogusKeyword) {
+				alerts = append(alerts, fmt.Sprintf("[ALERT]    (1) : config : parsing [%s:%d] : unknown keyword '%s' in 'backend' section", cfgFile, n+1, bogusKeyword))
+			}
+		}
+		if len(alerts) > 0 {
+			return fmt.Errorf("%s", strings.Join(alerts, "\n"))
+		}
+		return nil
+	}
+	metrics := c.instance.metrics.(*helper_test.MetricsMock)
+
+	invalid1 := c.addSnippetBackend("app1", bogusKeyword)
+	invalid2 := c.addSnippetBackend("app2", "http-response set-header X-Other 1", bogusKeyword)
+	valid := c.addSnippetBackend("app3", "http-response set-header X-Valid 1")
+	c.Update()
+
+	assert.Equal(t, 2, calls)
+	assert.Nil(t, invalid1.CustomConfigLate)
+	assert.Nil(t, invalid2.CustomConfigLate)
+	assert.Equal(t, []string{"http-response set-header X-Valid 1"}, valid.CustomConfigLate)
+	cfg := c.readConfig(filepath.Join(c.tempdir, "haproxy.cfg"))
+	assert.NotContains(t, cfg, bogusKeyword)
+	assert.Contains(t, cfg, "http-response set-header X-Valid 1")
+	assert.Equal(t, 2, metrics.ConfigSnippetsRejected)
+	require.Len(t, c.logger.Logging, 4)
+	assert.Contains(t, c.logger.Logging[0], "WARN skipping configuration snippet on Ingress 'd1/app1'")
+	assert.Contains(t, c.logger.Logging[1], "WARN skipping configuration snippet on Ingress 'd1/app2'")
+	c.logger.Logging = c.logger.Logging[2:]
+	c.logger.CompareLogging(defaultLogging)
+}
+
 func TestCheckConfigSnippetsStopsAfterMaxRounds(t *testing.T) {
 	c := setup(t)
 	defer c.teardown()
