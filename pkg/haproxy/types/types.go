@@ -719,8 +719,7 @@ type Backend struct {
 	CustomConfigEarly   []string
 	CustomConfigLate    []string
 	CustomConfigSource  string
-	// KeepConfigSnippetDropped must copy these: backendsMatch uses reflect.DeepEqual, which compares unexported fields too
-	droppedConfigEarly  []string
+	droppedConfigEarly  []string // KeepConfigSnippetDropped must copy these: backendsMatch uses reflect.DeepEqual, which compares unexported fields too
 	droppedConfigLate   []string
 	CustomHTTPResponses HTTPResponses
 	DeniedIPTCP         AccessConfig
